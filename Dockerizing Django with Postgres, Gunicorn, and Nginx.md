@@ -9,31 +9,13 @@ _Dependencies_:
 2.  Docker v20.10.8
 3.  Python v3.9.6
 
-> Django on Docker Series:
-> 
-> 1.  [Dockerizing Django with Postgres, Gunicorn, and Nginx](/blog/dockerizing-django-with-postgres-gunicorn-and-nginx/) (this article!)
-> 2.  [Securing a Containerized Django Application with Let's Encrypt](/blog/django-lets-encrypt/)
-> 3.  [Deploying Django to AWS with Docker and Let's Encrypt](/blog/django-docker-https-aws/)
-
-Contents
---------
-
-*   [Project Setup](#project-setup)
-*   [Docker](#docker)
-*   [Postgres](#postgres)
-*   [Gunicorn](#gunicorn)
-*   [Production Dockerfile](#production-dockerfile)
-*   [Nginx](#nginx)
-*   [Static Files](#static-files)
-*   [Media Files](#media-files)
-*   [Conclusion](#conclusion)
-
 Project Setup
 -------------
 
 Create a new project directory along with a new Django project:
 
-`$ mkdir django-on-docker && cd django-on-docker
+```
+$ mkdir django-on-docker && cd django-on-docker
 $ mkdir app && cd app
 $ python3.9 -m venv env
 $ source env/bin/activate
@@ -42,7 +24,8 @@ $ source env/bin/activate
 (env)$ pip install django==3.2.6
 (env)$ django-admin.py startproject hello_django .
 (env)$ python manage.py migrate
-(env)$ python manage.py runserver` 
+(env)$ python manage.py runserver
+``` 
 
 > Feel free to swap out virtualenv and Pip for [Poetry](https://python-poetry.org/) or [Pipenv](https://pipenv.pypa.io/). For more, review [Modern Python Environments](/blog/python-environments/).
 
@@ -56,7 +39,8 @@ Since we'll be moving to Postgres, go ahead and remove the _db.sqlite3_ file fro
 
 Your project directory should look like:
 
-`└── app
+```
+└── app
     ├── hello_django
     │   ├── __init__.py
     │   ├── asgi.py
@@ -64,14 +48,16 @@ Your project directory should look like:
     │   ├── urls.py
     │   └── wsgi.py
     ├── manage.py
-    └── requirements.txt` 
+    └── requirements.txt
+```
 
 Docker
 ------
 
 Install [Docker](https://docs.docker.com/install/), if you don't already have it, then add a _Dockerfile_ to the "app" directory:
 
-`# pull official base image
+```
+# pull official base image
 FROM python:3.9.6-alpine
 
 # set work directory
@@ -87,7 +73,8 @@ COPY ./requirements.txt .
 RUN pip install -r requirements.txt
 
 # copy project
-COPY . .` 
+COPY . .
+``` 
 
 So, we started with an [Alpine](https://github.com/gliderlabs/docker-alpine)\-based [Docker image](https://hub.docker.com/_/python/) for Python 3.9.6. We then set a [working directory](https://docs.docker.com/engine/reference/builder/#workdir) along with two environment variables:
 
@@ -100,7 +87,8 @@ Finally, we updated Pip, copied over the _requirements.txt_ file, installed the 
 
 Next, add a _docker-compose.yml_ file to the project root:
 
-`version: '3.8'
+```
+version: '3.8'
 
 services:
   web:
@@ -111,19 +99,22 @@ services:
     ports:
       - 8000:8000
     env_file:
-      - ./.env.dev` 
+      - ./.env.dev
+``` 
 
 > Review the [Compose file reference](https://docs.docker.com/compose/compose-file/) for info on how this file works.
 
 Update the `SECRET_KEY`, `DEBUG`, and `ALLOWED_HOSTS` variables in _settings.py_:
 
-`SECRET_KEY = os.environ.get("SECRET_KEY")
+```
+SECRET_KEY = os.environ.get("SECRET_KEY")
 
 DEBUG = int(os.environ.get("DEBUG", default=0))
 
 # 'DJANGO_ALLOWED_HOSTS' should be a single string of hosts with a space between each.
 # For example: 'DJANGO_ALLOWED_HOSTS=localhost 127.0.0.1 [::1]'
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS").split(" ")` 
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS").split(" ")
+```
 
 Make sure to add the import to the top:
 
@@ -131,9 +122,11 @@ Make sure to add the import to the top:
 
 Then, create a _.env.dev_ file in the project root to store environment variables for development:
 
-`DEBUG=1
+```
+DEBUG=1
 SECRET_KEY=foo
-DJANGO_ALLOWED_HOSTS=localhost 127.0.0.1 [::1]` 
+DJANGO_ALLOWED_HOSTS=localhost 127.0.0.1 [::1]
+```
 
 Build the image:
 
@@ -154,7 +147,8 @@ To configure Postgres, we'll need to add a new service to the _docker-compose.ym
 
 First, add a new service called `db` to _docker-compose.yml_:
 
-`version: '3.8'
+```
+version: '3.8'
 
 services:
   web:
@@ -178,7 +172,8 @@ services:
       - POSTGRES_DB=hello_django_dev
 
 volumes:
-  postgres_data:` 
+  postgres_data:
+```
 
 To persist the data beyond the life of the container we configured a volume. This config will bind `postgres_data` to the "/var/lib/postgresql/data/" directory in the container.
 
@@ -188,7 +183,8 @@ We also added an environment key to define a name for the default database and s
 
 We'll need some new environment variables for the `web` service as well, so update _.env.dev_ like so:
 
-`DEBUG=1
+```
+DEBUG=1
 SECRET_KEY=foo
 DJANGO_ALLOWED_HOSTS=localhost 127.0.0.1 [::1]
 SQL_ENGINE=django.db.backends.postgresql
@@ -196,11 +192,13 @@ SQL_DATABASE=hello_django_dev
 SQL_USER=hello_django
 SQL_PASSWORD=hello_django
 SQL_HOST=db
-SQL_PORT=5432` 
+SQL_PORT=5432
+``` 
 
 Update the `DATABASES` dict in _settings.py_:
 
-`DATABASES = {
+```
+DATABASES = {
     "default": {
         "ENGINE": os.environ.get("SQL_ENGINE", "django.db.backends.sqlite3"),
         "NAME": os.environ.get("SQL_DATABASE", BASE_DIR / "db.sqlite3"),
@@ -209,13 +207,15 @@ Update the `DATABASES` dict in _settings.py_:
         "HOST": os.environ.get("SQL_HOST", "localhost"),
         "PORT": os.environ.get("SQL_PORT", "5432"),
     }
-}` 
+}
+```
 
 Here, the database is configured based on the environment variables that we just defined. Take note of the default values.
 
 Update the Dockerfile to install the appropriate packages required for Psycopg2:
 
-`# pull official base image
+```
+# pull official base image
 FROM python:3.9.6-alpine
 
 # set work directory
@@ -235,12 +235,15 @@ COPY ./requirements.txt .
 RUN pip install -r requirements.txt
 
 # copy project
-COPY . .` 
+COPY . .
+```
 
 Add Psycopg2 to _requirements.txt_:
 
-`Django==3.2.6
-psycopg2-binary==2.9.1` 
+```
+Django==3.2.6
+psycopg2-binary==2.9.1
+```
 
 > Review [this GitHub Issue](https://github.com/psycopg/psycopg2/issues/684) for more info on installing Psycopg2 in an Alpine-based Docker Image.
 
@@ -260,7 +263,8 @@ Run the migrations:
 
 Ensure the default Django tables were created:
 
-`$ docker-compose exec db psql --username=hello_django --dbname=hello_django_dev
+```
+$ docker-compose exec db psql --username=hello_django --dbname=hello_django_dev
 
 psql (13.0)
 Type "help" for help.
@@ -296,7 +300,8 @@ hello_django_dev=# \dt
  public | django_session             | table | hello_django
 (10 rows)
 
-hello_django_dev=# \q` 
+hello_django_dev=# \q
+```
 
 You can check that the volume was created as well by running:
 
@@ -304,7 +309,7 @@ You can check that the volume was created as well by running:
 
 You should see something similar to:
 
-`[
+```[
     {
         "CreatedAt": "2021-08-23T15:49:08Z",
         "Driver": "local",
@@ -318,11 +323,13 @@ You should see something similar to:
         "Options": null,
         "Scope": "local"
     }
-]` 
+]
+```
 
 Next, add an _entrypoint.sh_ file to the "app" directory to verify that Postgres is healthy _before_ applying the migrations and running the Django development server:
 
-`#!/bin/sh
+```
+#!/bin/sh
 
 if [ "$DATABASE" = "postgres" ]
 then
@@ -338,7 +345,8 @@ fi
 python manage.py flush --no-input
 python manage.py migrate
 
-exec "[[email protected]](/cdn-cgi/l/email-protection)"` 
+exec "[[email protected]](/cdn-cgi/l/email-protection)"
+```
 
 Update the file permissions locally:
 
@@ -346,7 +354,8 @@ Update the file permissions locally:
 
 Then, update the Dockerfile to copy over the _entrypoint.sh_ file and run it as the Docker [entrypoint](https://docs.docker.com/engine/reference/builder/#entrypoint) command:
 
-`# pull official base image
+```
+# pull official base image
 FROM python:3.9.6-alpine
 
 # set work directory
@@ -374,11 +383,13 @@ RUN chmod +x /usr/src/app/entrypoint.sh
 COPY . .
 
 # run entrypoint.sh
-ENTRYPOINT ["/usr/src/app/entrypoint.sh"]` 
+ENTRYPOINT ["/usr/src/app/entrypoint.sh"]
+```
 
 Add the `DATABASE` environment variable to _.env.dev_:
 
-`DEBUG=1
+```
+DEBUG=1
 SECRET_KEY=foo
 DJANGO_ALLOWED_HOSTS=localhost 127.0.0.1 [::1]
 SQL_ENGINE=django.db.backends.postgresql
@@ -387,7 +398,8 @@ SQL_USER=hello_django
 SQL_PASSWORD=hello_django
 SQL_HOST=db
 SQL_PORT=5432
-DATABASE=postgres` 
+DATABASE=postgres
+``` 
 
 Test it out again:
 
@@ -399,17 +411,20 @@ Test it out again:
 
 First, despite adding Postgres, we can still create an independent Docker image for Django as long as the `DATABASE` environment variable is not set to `postgres`. To test, build a new image and then run a new container:
 
-`$ docker build -f ./app/Dockerfile -t hello_django:latest ./app
+```
+$ docker build -f ./app/Dockerfile -t hello_django:latest ./app
 $ docker run -d \
     -p 8006:8000 \
     -e "SECRET_KEY=please_change_me" -e "DEBUG=1" -e "DJANGO_ALLOWED_HOSTS=*" \
-    hello_django python /usr/src/app/manage.py runserver 0.0.0.0:8000` 
+    hello_django python /usr/src/app/manage.py runserver 0.0.0.0:8000
+```
 
 You should be able to view the welcome page at [http://localhost:8006](http://localhost:8006)
 
 Second, you may want to comment out the database flush and migrate commands in the _entrypoint.sh_ script so they don't run on every container start or re-start:
 
-`#!/bin/sh
+```
+#!/bin/sh
 
 if [ "$DATABASE" = "postgres" ]
 then
@@ -425,27 +440,33 @@ fi
 # python manage.py flush --no-input
 # python manage.py migrate
 
-exec "[[email protected]](/cdn-cgi/l/email-protection)"` 
+exec "[[email protected]](/cdn-cgi/l/email-protection)"
+```
 
 Instead, you can run them manually, after the containers spin up, like so:
 
-`$ docker-compose exec web python manage.py flush --no-input
-$ docker-compose exec web python manage.py migrate` 
+```
+$ docker-compose exec web python manage.py flush --no-input
+$ docker-compose exec web python manage.py migrate
+```
 
 Gunicorn
 --------
 
 Moving along, for production environments, let's add [Gunicorn](https://gunicorn.org/), a production-grade WSGI server, to the requirements file:
 
-`Django==3.2.6
+```
+Django==3.2.6
 gunicorn==20.1.0
-psycopg2-binary==2.9.1` 
+psycopg2-binary==2.9.1 
+```
 
 > Curious about WSGI and Gunicorn? Review the [WSGI](https://testdriven.io/courses/python-web-framework/wsgi/) chapter from the [Building Your Own Python Web Framework](https://testdriven.io/courses/python-web-framework/) course.
 
 Since we still want to use Django's built-in server in development, create a new compose file called _docker-compose.prod.yml_ for production:
 
-`version: '3.8'
+```
+version: '3.8'
 
 services:
   web:
@@ -465,7 +486,8 @@ services:
       - ./.env.prod.db
 
 volumes:
-  postgres_data:` 
+  postgres_data:
+```
 
 > If you have multiple environments, you may want to look at using a [docker-compose.override.yml](https://docs.docker.com/compose/extends/) configuration file. With this approach, you'd add your base config to a _docker-compose.yml_ file and then use a _docker-compose.override.yml_ file to override those config settings based on the environment.
 
@@ -473,7 +495,8 @@ Take note of the default `command`. We're running Gunicorn rather than the Djang
 
 _.env.prod_:
 
-`DEBUG=0
+```
+DEBUG=0
 SECRET_KEY=change_me
 DJANGO_ALLOWED_HOSTS=localhost 127.0.0.1 [::1]
 SQL_ENGINE=django.db.backends.postgresql
@@ -482,13 +505,16 @@ SQL_USER=hello_django
 SQL_PASSWORD=hello_django
 SQL_HOST=db
 SQL_PORT=5432
-DATABASE=postgres` 
+DATABASE=postgres
+```
 
 _.env.prod.db_:
 
-`POSTGRES_USER=hello_django
+```
+POSTGRES_USER=hello_django
 POSTGRES_PASSWORD=hello_django
-POSTGRES_DB=hello_django_prod` 
+POSTGRES_DB=hello_django_prod
+```
 
 Add the two files to the project root. You'll probably want to keep them out of version control, so add them to a _.gitignore_ file.
 
@@ -511,7 +537,8 @@ Did you notice that we're still running the database [flush](https://docs.django
 
 _entrypoint.prod.sh_:
 
-`#!/bin/sh
+```
+#!/bin/sh
 
 if [ "$DATABASE" = "postgres" ]
 then
@@ -528,11 +555,13 @@ exec "[[email protected]](/cdn-cgi/l/email-protection)"`
 
 Update the file permissions locally:
 
-`$ chmod +x app/entrypoint.prod.sh` 
+`$ chmod +x app/entrypoint.prod.sh
+```
 
 To use this file, create a new Dockerfile called _Dockerfile.prod_ for use with production builds:
 
-`###########
+```
+###########
 # BUILDER #
 ###########
 
@@ -600,7 +629,8 @@ RUN chown -R app:app $APP_HOME
 USER app
 
 # run entrypoint.prod.sh
-ENTRYPOINT ["/home/app/web/entrypoint.prod.sh"]` 
+ENTRYPOINT ["/home/app/web/entrypoint.prod.sh"]
+```
 
 Here, we used a Docker [multi-stage build](https://docs.docker.com/develop/develop-images/multistage-build/) to reduce the final image size. Essentially, `builder` is a temporary image that's used for building the Python wheels. The wheels are then copied over to the final production image and the `builder` image is discarded.
 
@@ -610,7 +640,8 @@ Did you notice that we created a non-root user? By default, Docker runs containe
 
 Update the `web` service within the _docker-compose.prod.yml_ file to build with _Dockerfile.prod_:
 
-`web:
+```
+web:
   build:
     context: ./app
     dockerfile: Dockerfile.prod
@@ -620,13 +651,16 @@ Update the `web` service within the _docker-compose.prod.yml_ file to build with
   env_file:
     - ./.env.prod
   depends_on:
-    - db` 
+    - db
+```
 
 Try it out:
 
-`$ docker-compose -f docker-compose.prod.yml down -v
+```
+$ docker-compose -f docker-compose.prod.yml down -v
 $ docker-compose -f docker-compose.prod.yml up -d --build
-$ docker-compose -f docker-compose.prod.yml exec web python manage.py migrate --noinput` 
+$ docker-compose -f docker-compose.prod.yml exec web python manage.py migrate --noinput
+```
 
 Nginx
 -----
@@ -635,29 +669,36 @@ Next, let's add Nginx into the mix to act as a [reverse proxy](https://www.nginx
 
 Add the service to _docker-compose.prod.yml_:
 
-`nginx:
+```
+nginx:
   build: ./nginx
   ports:
     - 1337:80
   depends_on:
-    - web` 
+    - web
+```
 
 Then, in the local project root, create the following files and folders:
 
-`└── nginx
+```
+└── nginx
     ├── Dockerfile
-    └── nginx.conf` 
+    └── nginx.conf
+```
 
 _Dockerfile_:
 
-`FROM nginx:1.21-alpine
+```
+FROM nginx:1.21-alpine
 
 RUN rm /etc/nginx/conf.d/default.conf
-COPY nginx.conf /etc/nginx/conf.d` 
+COPY nginx.conf /etc/nginx/conf.d
+```
 
 _nginx.conf_:
 
-`upstream hello_django {
+```
+upstream hello_django {
     server web:8000;
 }
 
@@ -672,13 +713,16 @@ server {
         proxy_redirect off;
     }
 
-}` 
+}
+```
+
 
 > Review [Using NGINX and NGINX Plus as an Application Gateway with uWSGI and Django](https://docs.nginx.com/nginx/admin-guide/web-server/app-gateway-uwsgi-django/) for more info on configuring Nginx to work with Django.
 
 Then, update the `web` service, in _docker-compose.prod.yml_, replacing `ports` with `expose`:
 
-`web:
+```
+web:
   build:
     context: ./app
     dockerfile: Dockerfile.prod
@@ -688,7 +732,8 @@ Then, update the `web` service, in _docker-compose.prod.yml_, replacing `ports` 
   env_file:
     - ./.env.prod
   depends_on:
-    - db` 
+    - db
+```
 
 Now, port 8000 is only exposed internally, to other Docker services. The port will no longer be published to the host machine.
 
@@ -696,15 +741,18 @@ Now, port 8000 is only exposed internally, to other Docker services. The port wi
 
 Test it out again.
 
-`$ docker-compose -f docker-compose.prod.yml down -v
+```
+$ docker-compose -f docker-compose.prod.yml down -v
 $ docker-compose -f docker-compose.prod.yml up -d --build
-$ docker-compose -f docker-compose.prod.yml exec web python manage.py migrate --noinput` 
+$ docker-compose -f docker-compose.prod.yml exec web python manage.py migrate --noinput
+```
 
 Ensure the app is up and running at [http://localhost:1337](http://localhost:1337).
 
 Your project structure should now look like:
 
-`├── .env.dev
+```
+├── .env.dev
 ├── .env.prod
 ├── .env.prod.db
 ├── .gitignore
@@ -725,7 +773,8 @@ Your project structure should now look like:
 ├── docker-compose.yml
 └── nginx
     ├── Dockerfile
-    └── nginx.conf` 
+    └── nginx.conf
+```
 
 Bring the containers down once done:
 
@@ -738,8 +787,10 @@ Static Files
 
 Update _settings.py_:
 
-`STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"` 
+```
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+```
 
 ### Development
 
@@ -751,7 +802,8 @@ To test, first re-build the images and spin up the new containers per usual. Ens
 
 For production, add a volume to the `web` and `nginx` services in _docker-compose.prod.yml_ so that each container will share a directory named "staticfiles":
 
-`version: '3.8'
+```
+version: '3.8'
 
 services:
   web:
@@ -784,11 +836,14 @@ services:
 
 volumes:
   postgres_data:
-  static_volume:` 
+  static_volume:
+```
+
 
 We need to also create the "/home/app/web/staticfiles" folder in _Dockerfile.prod_:
 
-`...
+```
+...
 
 # create the appropriate directories
 ENV HOME=/home/app
@@ -797,7 +852,8 @@ RUN mkdir $APP_HOME
 RUN mkdir $APP_HOME/staticfiles
 WORKDIR $APP_HOME
 
-...` 
+...
+```
 
 Why is this necessary?
 
@@ -812,7 +868,8 @@ We used the former.
 
 Next, update the Nginx configuration to route static file requests to the "staticfiles" folder:
 
-`upstream hello_django {
+```
+upstream hello_django {
     server web:8000;
 }
 
@@ -831,7 +888,9 @@ server {
         alias /home/app/web/staticfiles/;
     }
 
-}` 
+}
+```
+
 
 Spin down the development containers:
 
@@ -839,9 +898,12 @@ Spin down the development containers:
 
 Test:
 
-`$ docker-compose -f docker-compose.prod.yml up -d --build
+```
+$ docker-compose -f docker-compose.prod.yml up -d --build
 $ docker-compose -f docker-compose.prod.yml exec web python manage.py migrate --noinput
-$ docker-compose -f docker-compose.prod.yml exec web python manage.py collectstatic --no-input --clear` 
+$ docker-compose -f docker-compose.prod.yml exec web python manage.py collectstatic --no-input --clear
+```
+
 
 Again, requests to `http://localhost:1337/static/*` will be served from the "staticfiles" directory.
 
@@ -849,7 +911,8 @@ Navigate to [http://localhost:1337/admin](http://localhost:1337/admin) and ensur
 
 You can also verify in the logs -- via `docker-compose -f docker-compose.prod.yml logs -f` -- that requests to the static files are served up successfully via Nginx:
 
-`nginx_1  | 192.168.144.1 - - [23/Aug/2021:20:11:00 +0000] "GET /admin/ HTTP/1.1" 302 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36" "-"
+```
+nginx_1  | 192.168.144.1 - - [23/Aug/2021:20:11:00 +0000] "GET /admin/ HTTP/1.1" 302 0 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36" "-"
 nginx_1  | 192.168.144.1 - - [23/Aug/2021:20:11:00 +0000] "GET /admin/login/?next=/admin/ HTTP/1.1" 200 2214 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36" "-"
 nginx_1  | 192.168.144.1 - - [23/Aug/2021:20:11:00 +0000] "GET /static/admin/css/base.css HTTP/1.1" 304 0 "http://localhost:1337/admin/login/?next=/admin/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36" "-"
 nginx_1  | 192.168.144.1 - - [23/Aug/2021:20:11:00 +0000] "GET /static/admin/css/nav_sidebar.css HTTP/1.1" 304 0 "http://localhost:1337/admin/login/?next=/admin/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36" "-"
@@ -858,7 +921,8 @@ nginx_1  | 192.168.144.1 - - [23/Aug/2021:20:11:00 +0000] "GET /static/admin/css
 nginx_1  | 192.168.144.1 - - [23/Aug/2021:20:11:00 +0000] "GET /static/admin/js/nav_sidebar.js HTTP/1.1" 304 0 "http://localhost:1337/admin/login/?next=/admin/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36" "-"
 nginx_1  | 192.168.144.1 - - [23/Aug/2021:20:11:00 +0000] "GET /static/admin/css/fonts.css HTTP/1.1" 304 0 "http://localhost:1337/static/admin/css/base.css" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36" "-"
 nginx_1  | 192.168.144.1 - - [23/Aug/2021:20:11:00 +0000] "GET /static/admin/fonts/Roboto-Regular-webfont.woff HTTP/1.1" 304 0 "http://localhost:1337/static/admin/css/fonts.css" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36" "-"
-nginx_1  | 192.168.144.1 - - [23/Aug/2021:20:11:00 +0000] "GET /static/admin/fonts/Roboto-Light-webfont.woff HTTP/1.1" 304 0 "http://localhost:1337/static/admin/css/fonts.css" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36" "-"` 
+nginx_1  | 192.168.144.1 - - [23/Aug/2021:20:11:00 +0000] "GET /static/admin/fonts/Roboto-Light-webfont.woff HTTP/1.1" 304 0 "http://localhost:1337/static/admin/css/fonts.css" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36" "-"
+```
 
 Bring the containers once done:
 
@@ -869,12 +933,15 @@ Media Files
 
 To test out the handling of media files, start by creating a new Django app:
 
-`$ docker-compose up -d --build
-$ docker-compose exec web python manage.py startapp upload` 
+```
+$ docker-compose up -d --build
+$ docker-compose exec web python manage.py startapp upload
+```
 
 Add the new app to the `INSTALLED_APPS` list in _settings.py_:
 
-`INSTALLED_APPS = [
+```
+INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -883,11 +950,13 @@ Add the new app to the `INSTALLED_APPS` list in _settings.py_:
     "django.contrib.staticfiles",
 
     "upload",
-]` 
+]
+```
 
 _app/upload/views.py_:
 
-`from django.shortcuts import render
+```
+from django.shortcuts import render
 from django.core.files.storage import FileSystemStorage
 
 def image_upload(request):
@@ -900,11 +969,13 @@ def image_upload(request):
         return render(request, "upload.html", {
             "image_url": image_url
         })
-    return render(request, "upload.html")` 
+    return render(request, "upload.html")
+```
 
 Add a "templates", directory to the "app/upload" directory, and then add a new template called _upload.html_:
 
-`{% block content %}
+```
+{% block content %}
 
   <form action="{% url "upload" %}" method="post" enctype="multipart/form-data">
     {% csrf_token %}
@@ -916,11 +987,13 @@ Add a "templates", directory to the "app/upload" directory, and then add a new t
     <p>File uploaded at: <a href="{{ image_url }}">{{ image_url }}</a></p>
   {% endif %}
 
-{% endblock %}` 
+{% endblock %}
+```
 
 _app/hello\_django/urls.py_:
 
-`from django.contrib import admin
+```
+from django.contrib import admin
 from django.urls import path
 from django.conf import settings
 from django.conf.urls.static import static
@@ -933,12 +1006,15 @@ urlpatterns = [
 ]
 
 if bool(settings.DEBUG):
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)` 
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+```
 
 _app/hello\_django/settings.py_:
 
-`MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "mediafiles"` 
+```
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "mediafiles"
+```
 
 ### Development
 
@@ -952,7 +1028,8 @@ You should be able to upload an image at [http://localhost:8000/](http://localho
 
 For production, add another volume to the `web` and `nginx` services:
 
-`version: '3.8'
+```
+version: '3.8'
 
 services:
   web:
@@ -988,11 +1065,13 @@ services:
 volumes:
   postgres_data:
   static_volume:
-  media_volume:` 
+  media_volume:
+```
 
 Create the "/home/app/web/mediafiles" folder in _Dockerfile.prod_:
 
-`...
+```
+...
 
 # create the appropriate directories
 ENV HOME=/home/app
@@ -1002,11 +1081,13 @@ RUN mkdir $APP_HOME/staticfiles
 RUN mkdir $APP_HOME/mediafiles
 WORKDIR $APP_HOME
 
-...` 
+...
+```
 
 Update the Nginx config again:
 
-`upstream hello_django {
+```
+upstream hello_django {
     server web:8000;
 }
 
@@ -1029,15 +1110,18 @@ server {
         alias /home/app/web/mediafiles/;
     }
 
-}` 
+}
+```
 
 Re-build:
 
-`$ docker-compose down -v
+```
+$ docker-compose down -v
 
 $ docker-compose -f docker-compose.prod.yml up -d --build
 $ docker-compose -f docker-compose.prod.yml exec web python manage.py migrate --noinput
-$ docker-compose -f docker-compose.prod.yml exec web python manage.py collectstatic --no-input --clear` 
+$ docker-compose -f docker-compose.prod.yml exec web python manage.py collectstatic --no-input --clear
+```
 
 Test it out one final time:
 
